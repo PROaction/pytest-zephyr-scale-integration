@@ -49,86 +49,92 @@ def adaptavist_integration(request):
     zephyr_enabled = request.config.getoption("--zephyr", default=False)
     test_run_name = request.config.getoption("--test_run_name", default="Test Run Cycle")
 
-    if not zephyr_enabled:
-        yield None
-        return
+    if zephyr_enabled:
+        integration = Integration()
+        integration.load_environment_variables()  # Загружаем переменные только если флаг --zephyr установлен
 
-    integration = Integration(
-        api_token=JIRA_TOKEN,
-        base_url=JIRA_URL,
-        project_id=JIRA_PROJECT_ID,
-        project_name=JIRA_PROJECT_NAME,
-    )
+    # if not zephyr_enabled:
+    #     yield None
+    #     return
 
-    yield integration
+        # integration = Integration(
+            # api_token=JIRA_TOKEN,
+            # base_url=JIRA_URL,
+            # project_id=JIRA_PROJECT_ID,
+            # project_name=JIRA_PROJECT_NAME,
+        # )
 
-    # Создаем тестовый цикл и добавляем тест-кейсы
-    test_run_id = integration.create_test_cycle(test_run_name)
-    test_case_ids = [integration.get_test_case_id(key) for key in executed_test_keys]
-    integration.add_test_cases_to_cycle(test_run_id, test_case_ids)
+        yield integration
 
-    # Получаем список тестов в цикле с их ID
-    # test_run_id = integration.get_test_run_id(test_run_key)
-    test_run_items = integration.get_test_run_items(test_run_id)
+        # Создаем тестовый цикл и добавляем тест-кейсы
+        test_run_id = integration.create_test_cycle(test_run_name)
+        test_case_ids = [integration.get_test_case_id(key) for key in executed_test_keys]
+        integration.add_test_cases_to_cycle(test_run_id, test_case_ids)
 
-    # В словаре с тест-кейсами и их статусами заменяем ключ вида T123 на ID ["$lastTestResult"]["id"]
-    updated_test_results = {}
-    for item in test_run_items:
-        test_case_key = item["$lastTestResult"]["testCase"]["key"].split('-')[-1]
-        if test_case_key in set_test_results:
-            updated_test_results[item['$lastTestResult']["id"]] = set_test_results[test_case_key]
+        # Получаем список тестов в цикле с их ID
+        # test_run_id = integration.get_test_run_id(test_run_key)
+        test_run_items = integration.get_test_run_items(test_run_id)
 
-    # Обновление статуса тест-кейсов
-    if updated_test_results:
-        statuses_to_update = [{"id": k, "testResultStatusId": v} for k, v in updated_test_results.items()]
-        integration.set_test_case_statuses(statuses_to_update)
-
-    # Обработка параметризованных тестов
-    for test_key in executed_test_keys:
-        relevant_results = [result for key, result in full_test_results.items() if test_key in key]
-        print('relevant_results')
-        pprint(relevant_results)
-        # overall_status = FAIL if any(status == FAIL for status in relevant_results) else PASS
-
+        # В словаре с тест-кейсами и их статусами заменяем ключ вида T123 на ID ["$lastTestResult"]["id"]
+        updated_test_results = {}
         for item in test_run_items:
-            test_case_run_id = item["id"]  # id теста (в items это верхних уровень, на уровне с $lastTestResult)
-            script_results = integration.get_test_script_results(test_run_id, test_case_run_id)
+            test_case_key = item["$lastTestResult"]["testCase"]["key"].split('-')[-1]
+            if test_case_key in set_test_results:
+                updated_test_results[item['$lastTestResult']["id"]] = set_test_results[test_case_key]
 
-            parameter_set_status = {}
-            for script_result in script_results[0]["testScriptResults"]:
+        # Обновление статуса тест-кейсов
+        if updated_test_results:
+            statuses_to_update = [{"id": k, "testResultStatusId": v} for k, v in updated_test_results.items()]
+            integration.set_test_case_statuses(statuses_to_update)
 
-                # если тест параметризованный, то у него есть поле parameterSetId
-                parameter_set_id = script_result.get('parameterSetId')
-                if parameter_set_id:
+        # Обработка параметризованных тестов
+        for test_key in executed_test_keys:
+            relevant_results = [result for key, result in full_test_results.items() if test_key in key]
+            print('relevant_results')
+            pprint(relevant_results)
+            # overall_status = FAIL if any(status == FAIL for status in relevant_results) else PASS
 
-                    # словарь для того, чтобы проставить единый статус у всех шагов тестового скрипта
-                    if parameter_set_id not in parameter_set_status:
-                        parameter_set_status[parameter_set_id] = {"status": None, "steps": []}
-                    parameter_set_status[parameter_set_id]["steps"].append(script_result['id'])
+            for item in test_run_items:
+                test_case_run_id = item["id"]  # id теста (в items это верхних уровень, на уровне с $lastTestResult)
+                script_results = integration.get_test_script_results(test_run_id, test_case_run_id)
 
-            # Сортируем по parameterSetId для того, чтобы сопоставить параметризованные тесты с выполнением pytest'ом
-            sorted_parameter_set_status = dict(sorted(parameter_set_status.items()))
-            print('sorted_parameter_set_status')
-            print(sorted_parameter_set_status)
+                parameter_set_status = {}
+                for script_result in script_results[0]["testScriptResults"]:
 
-            for param_id, info in zip(sorted_parameter_set_status.keys(), relevant_results):
-                sorted_parameter_set_status[param_id]["status"] = info
+                    # если тест параметризованный, то у него есть поле parameterSetId
+                    parameter_set_id = script_result.get('parameterSetId')
+                    if parameter_set_id:
 
-            # Формируем тело запроса для PUT /testscriptresult
-            script_statuses_to_update = []
-            for param_id, info in sorted_parameter_set_status.items():
-                for step_id in info["steps"]:
-                    script_statuses_to_update.append({
-                        "id": step_id,
-                        "testResultStatusId": info["status"]
-                    })
+                        # словарь для того, чтобы проставить единый статус у всех шагов тестового скрипта
+                        if parameter_set_id not in parameter_set_status:
+                            parameter_set_status[parameter_set_id] = {"status": None, "steps": []}
+                        parameter_set_status[parameter_set_id]["steps"].append(script_result['id'])
 
-            print('script_statuses_to_update')
-            print(script_statuses_to_update)
+                # Сортируем по parameterSetId для того, чтобы сопоставить параметризованные тесты с выполнением pytest'ом
+                sorted_parameter_set_status = dict(sorted(parameter_set_status.items()))
+                print('sorted_parameter_set_status')
+                print(sorted_parameter_set_status)
 
-            # Установка статусов
-            if script_statuses_to_update:
-                integration.set_test_script_statuses(script_statuses_to_update)
+                for param_id, info in zip(sorted_parameter_set_status.keys(), relevant_results):
+                    sorted_parameter_set_status[param_id]["status"] = info
+
+                # Формируем тело запроса для PUT /testscriptresult
+                script_statuses_to_update = []
+                for param_id, info in sorted_parameter_set_status.items():
+                    for step_id in info["steps"]:
+                        script_statuses_to_update.append({
+                            "id": step_id,
+                            "testResultStatusId": info["status"]
+                        })
+
+                print('script_statuses_to_update')
+                print(script_statuses_to_update)
+
+                # Установка статусов
+                if script_statuses_to_update:
+                    integration.set_test_script_statuses(script_statuses_to_update)
+    else:
+        yield None
 
 
 def pytest_addoption(parser):
