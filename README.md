@@ -1,6 +1,6 @@
 # pytest-zephyr-integration
 
-![PyPI](https://img.shields.io/pypi/v/pytest-zephyr-integration)
+![PyPI](https://img.shields.io/pypi/v/pytest-zephyr-scale-integration)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.6%2B-brightgreen.svg)
 
