@@ -3,8 +3,8 @@ from pprint import pprint
 
 import pytest
 
-from integration import (FAIL, JIRA_PROJECT_ID, JIRA_PROJECT_NAME, JIRA_TOKEN,
-                         JIRA_URL, PASS, Integration)
+from .integration import (FAIL, JIRA_PROJECT_ID, JIRA_PROJECT_NAME, JIRA_TOKEN,
+                          JIRA_URL, PASS, Integration)
 
 # Глобальный список для хранения ключей тестов, которые будут выполнены
 executed_test_keys = []
