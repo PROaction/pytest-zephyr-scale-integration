@@ -1,10 +1,10 @@
-# pytest-zephyr-integration
+# pytest-zephyr-scale-integration
 
 ![PyPI](https://img.shields.io/pypi/v/pytest-zephyr-scale-integration)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.6%2B-brightgreen.svg)
 
-`pytest-zephyr-integration` — это библиотека для интеграции `pytest` с Jira Zephyr (Adaptavist\TM4J). 
+`pytest-zephyr-scale-integration` — это библиотека для интеграции `pytest` с Jira Zephyr (Adaptavist\TM4J). 
 Она позволяет автоматически создавать тестовые циклы в Zephyr, запускать тесты и обновлять их статусы в Jira.
 
 ## Возможности
