@@ -81,6 +81,8 @@ class Integration:
 
         if missing_env_vars:
             raise EnvironmentError(f"Missing required environment variables: {', '.join(missing_env_vars)}")
+        else:
+            print(f'Переменные загружены: {self.JIRA_TOKEN} \t {self.JIRA_PROJECT_ID} \t {self.JIRA_URL} \t {self.JIRA_PROJECT_ID}')
 
     def _send_request_with_retries(self, method, url, **kwargs):
         retries = 0
