@@ -18,7 +18,7 @@
 
 Установить библиотеку можно через `pip`:
 ```bash
-pip install pytest-zephyr-scale-integration
+pip install pytest_zephyr_scale_integration
 ```
 
 ## Запуск
