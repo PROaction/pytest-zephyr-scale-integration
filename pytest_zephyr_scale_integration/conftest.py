@@ -77,7 +77,7 @@ def pytest_sessionfinish(session, exitstatus):
     if zephyr_enabled and integration:
         # Создаем тестовый цикл и добавляем тест-кейсы
         test_run_id = integration.create_test_cycle(test_run_name)
-        print('Тестовый цикл создан: ' + test_run_id)
+        print('Тестовый цикл создан: ' + str(test_run_id))
         test_case_ids = [integration.get_test_case_id(key) for key in executed_test_keys]
         integration.add_test_cases_to_cycle(test_run_id, test_case_ids)
 
