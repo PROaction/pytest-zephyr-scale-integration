@@ -181,6 +181,16 @@ class Integration:
         response.raise_for_status()
         return response.json()
 
+    def get_test_statuses(self):
+        url = f'{self.JIRA_URL}/rest/tests/1.0/project/{self.JIRA_PROJECT_ID}/testresultstatus'
+        response = self._send_request_with_retries('GET', url)
+
+        data = dump.dump_all(response)
+        print(data.decode('utf-8'))
+
+        response.raise_for_status()
+        return response.json()
+
     def set_test_case_statuses(self, statuses):
         url = f"{self.JIRA_URL}/rest/tests/1.0/testresult"
         response = self._send_request_with_retries('PUT', url, json=statuses)

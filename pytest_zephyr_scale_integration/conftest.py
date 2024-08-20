@@ -11,6 +11,7 @@ executed_test_keys = []
 full_test_results = {}  # полный список тестов (вместе с параметризацией)
 # список тестов без повторений, для установки статусов у ТК
 set_test_results = {}
+dict_test_statuses = {}  # {'PASS': 3238, 'FAIL': 3239}
 
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
@@ -31,14 +32,14 @@ def pytest_runtest_makereport(item, call):
             # Создание словаря test_key: status_id
             # {'T123': 3238, 'T234': 3239}
             if report.outcome == "passed":
-                full_test_results[test_nodeid] = PASS
+                full_test_results[test_nodeid] = dict_test_statuses.get('PASS')
                 # Если тест параметризованный, то одинаковых ключей будет несколько.
                 # Если хотя бы один из них FAIL, то FAIL.
                 if potential_key not in set_test_results:
-                    set_test_results[potential_key] = PASS
+                    set_test_results[potential_key] = dict_test_statuses.get('PASS')
             else:
-                full_test_results[test_nodeid] = FAIL
-                set_test_results[potential_key] = FAIL
+                full_test_results[test_nodeid] = dict_test_statuses.get('FAIL')
+                set_test_results[potential_key] = dict_test_statuses.get('FAIL')
 
     print('executed_test_keys')
     pprint(executed_test_keys)
@@ -56,6 +57,14 @@ def pytest_configure(config):
     if zephyr_enabled:
         integration = Integration()
         integration.load_environment_variables()  # Загружаем переменные только если флаг --zephyr установлен
+
+        # Получаем статусы тестов и сохраняем их в config
+        status_items = integration.get_test_statuses()
+        for status_item in status_items:
+            status = status_item.get('name').upper()
+            if status not in dict_test_statuses:
+                dict_test_statuses[status] = status_item.get('id')
+        # config._statuses = statuses
 
         # Сохраняем данные в config, чтобы использовать их в других хуках
         config._zephyr_integration = integration
