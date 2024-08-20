@@ -44,28 +44,37 @@ def pytest_runtest_makereport(item, call):
     pprint(executed_test_keys)
 
 
-@pytest.fixture(scope="session", autouse=True)
-def adaptavist_integration(request):
-    zephyr_enabled = request.config.getoption("--zephyr", default=False)
-    test_run_name = request.config.getoption("--test_run_name", default="Test Run Cycle")
+@pytest.hookimpl(tryfirst=True)
+def pytest_configure(config):
+    zephyr_enabled = config.getoption("--zephyr", default=False)
+    test_run_name = config.getoption("--test_run_name", default="Test Run Cycle")
+
+    # Сохраняем значения в config для использования в pytest_sessionfinish
+    config._zephyr_enabled = zephyr_enabled
+    config._test_run_name = test_run_name
 
     if zephyr_enabled:
         integration = Integration()
         integration.load_environment_variables()  # Загружаем переменные только если флаг --zephyr установлен
 
-    # if not zephyr_enabled:
-    #     yield None
-    #     return
+        # Сохраняем данные в config, чтобы использовать их в других хуках
+        config._zephyr_integration = integration
+        config._test_run_name = test_run_name
+        # config._executed_test_keys = []  # Это список, который будет заполняться по ходу выполнения тестов
 
-        # integration = Integration(
-            # api_token=JIRA_TOKEN,
-            # base_url=JIRA_URL,
-            # project_id=JIRA_PROJECT_ID,
-            # project_name=JIRA_PROJECT_NAME,
-        # )
 
-        yield integration
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_sessionfinish(session, exitstatus):
+    # Обертка для выполнения действий до и после основного кода хука
+    outcome = yield
 
+    # Получаем сохраненные данные из config
+    zephyr_enabled = getattr(session.config, "_zephyr_enabled", False)
+    test_run_name = getattr(session.config, "_test_run_name", "Test Run Cycle")
+    integration = getattr(session.config, "_zephyr_integration", None)
+    # executed_test_keys = getattr(session.config, "_executed_test_keys", [])
+
+    if zephyr_enabled and integration:
         # Создаем тестовый цикл и добавляем тест-кейсы
         test_run_id = integration.create_test_cycle(test_run_name)
         print('Тестовый цикл создан: ' + test_run_id)
@@ -73,7 +82,6 @@ def adaptavist_integration(request):
         integration.add_test_cases_to_cycle(test_run_id, test_case_ids)
 
         # Получаем список тестов в цикле с их ID
-        # test_run_id = integration.get_test_run_id(test_run_key)
         test_run_items = integration.get_test_run_items(test_run_id)
 
         # В словаре с тест-кейсами и их статусами заменяем ключ вида T123 на ID ["$lastTestResult"]["id"]
@@ -93,25 +101,19 @@ def adaptavist_integration(request):
             relevant_results = [result for key, result in full_test_results.items() if test_key in key]
             print('relevant_results')
             pprint(relevant_results)
-            # overall_status = FAIL if any(status == FAIL for status in relevant_results) else PASS
 
             for item in test_run_items:
-                test_case_run_id = item["id"]  # id теста (в items это верхних уровень, на уровне с $lastTestResult)
+                test_case_run_id = item["id"]
                 script_results = integration.get_test_script_results(test_run_id, test_case_run_id)
 
                 parameter_set_status = {}
                 for script_result in script_results[0]["testScriptResults"]:
-
-                    # если тест параметризованный, то у него есть поле parameterSetId
                     parameter_set_id = script_result.get('parameterSetId')
                     if parameter_set_id:
-
-                        # словарь для того, чтобы проставить единый статус у всех шагов тестового скрипта
                         if parameter_set_id not in parameter_set_status:
                             parameter_set_status[parameter_set_id] = {"status": None, "steps": []}
                         parameter_set_status[parameter_set_id]["steps"].append(script_result['id'])
 
-                # Сортируем по parameterSetId для того, чтобы сопоставить параметризованные тесты с выполнением pytest'ом
                 sorted_parameter_set_status = dict(sorted(parameter_set_status.items()))
                 print('sorted_parameter_set_status')
                 print(sorted_parameter_set_status)
@@ -119,7 +121,6 @@ def adaptavist_integration(request):
                 for param_id, info in zip(sorted_parameter_set_status.keys(), relevant_results):
                     sorted_parameter_set_status[param_id]["status"] = info
 
-                # Формируем тело запроса для PUT /testscriptresult
                 script_statuses_to_update = []
                 for param_id, info in sorted_parameter_set_status.items():
                     for step_id in info["steps"]:
@@ -131,11 +132,8 @@ def adaptavist_integration(request):
                 print('script_statuses_to_update')
                 print(script_statuses_to_update)
 
-                # Установка статусов
                 if script_statuses_to_update:
                     integration.set_test_script_statuses(script_statuses_to_update)
-    else:
-        yield None
 
 
 def pytest_addoption(parser):
