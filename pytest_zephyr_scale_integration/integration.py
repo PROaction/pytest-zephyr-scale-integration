@@ -7,7 +7,7 @@ from requests import HTTPError
 from requests_toolbelt.utils import dump
 
 # Загрузка переменных из .env файла
-load_dotenv()
+# load_dotenv()
 
 # Получение значений из переменных окружения
 NOT_EXECUTED = None
@@ -24,7 +24,10 @@ JIRA_URL = None
 
 class Integration:
     def __init__(self):
-        self.session = None
+        self.session = requests.Session()
+        self.max_retries = 5  # Максимальное количество повторных попыток
+        self.retry_delay = 1  # Начальная задержка перед повторной попыткой (в секундах)
+
         self.NOT_EXECUTED = None
         self.IN_PROGRESS = None
         self.PASS = None
@@ -40,10 +43,12 @@ class Integration:
         # self.base_url = base_url
         # self.project_id = project_id
         # self.project_name = project_name
-        
 
-        self.max_retries = 5  # Максимальное количество повторных попыток
-        self.retry_delay = 1  # Начальная задержка перед повторной попыткой (в секундах)
+        # self.session = requests.Session()
+        # self.session.headers.update({
+        #     'Authorization': f'Bearer {JIRA_TOKEN}',
+        #     'Content-Type': 'application/json'
+        # })
 
     def load_environment_variables(self):
         # Загрузка переменных из .env файла
@@ -80,11 +85,12 @@ class Integration:
             raise EnvironmentError(f"Missing required environment variables: {', '.join(missing_env_vars)}")
         else:
             print(f'Переменные загружены: {self.JIRA_TOKEN} \t {self.JIRA_PROJECT_ID} \t {self.JIRA_URL} \t {self.JIRA_PROJECT_ID}')
-            self.session = requests.Session()
-            self.session.headers.update({
-                'Authorization': f'Bearer {JIRA_TOKEN}',
-                'Content-Type': 'application/json'
-            })
+
+        # Устанавливаем заголовки после загрузки переменных
+        self.session.headers.update({
+            'Authorization': f'Bearer {self.JIRA_TOKEN}',
+            'Content-Type': 'application/json'
+        })
 
     def _send_request_with_retries(self, method, url, **kwargs):
         retries = 0
