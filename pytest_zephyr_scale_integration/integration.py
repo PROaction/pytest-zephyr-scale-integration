@@ -101,10 +101,10 @@ class Integration:
                         f"попыток из-за ограничений скорости отправки запросов.")
 
     def create_test_cycle(self, cycle_name):
-        url = f"{self.base_url}/rest/tests/1.0/testrun"
+        url = f"{self.JIRA_URL}/rest/tests/1.0/testrun"
         payload = {
             "name": cycle_name,
-            "projectId": self.project_id,
+            "projectId": self.JIRA_PROJECT_ID,
             "statusId": 3247
         }
         response = self.session.post(url, json=payload)
@@ -115,7 +115,7 @@ class Integration:
         return response.json().get('id')  # Возвращает ID созданного цикла тестов
 
     def get_test_case_id(self, test_case_key):
-        url = f"{self.base_url}/rest/tests/1.0/testcase/{self.project_name}-{test_case_key}?fields=id"
+        url = f"{self.JIRA_URL}/rest/tests/1.0/testcase/{self.JIRA_PROJECT_NAME}-{test_case_key}?fields=id"
         response = self._send_request_with_retries('GET', url)
 
         data = dump.dump_all(response)
@@ -125,7 +125,7 @@ class Integration:
         return response.json().get('id')
 
     def get_test_run_id(self, test_cycle_key):
-        url = f"{self.base_url}/rest/tests/1.0/testrun/{test_cycle_key}?fields=id"
+        url = f"{self.JIRA_URL}/rest/tests/1.0/testrun/{test_cycle_key}?fields=id"
         response = self._send_request_with_retries('GET', url)
 
         data = dump.dump_all(response)
@@ -135,7 +135,7 @@ class Integration:
         return response.json().get('id')
 
     def add_test_cases_to_cycle(self, test_run_id, test_case_ids):
-        url = f"{self.base_url}/rest/tests/1.0/testrunitem/bulk/save"
+        url = f"{self.JIRA_URL}/rest/tests/1.0/testrunitem/bulk/save"
         added_test_run_items = [
             {"index": i, "lastTestResult": {"testCaseId": test_case_id}}
             for i, test_case_id in enumerate(test_case_ids)
@@ -152,7 +152,7 @@ class Integration:
         response.raise_for_status()
 
     def get_test_run_items(self, test_run_id):
-        url = (f"{self.base_url}/rest/tests/1.0/testrun/{test_run_id}/testrunitems?"
+        url = (f"{self.JIRA_URL}/rest/tests/1.0/testrun/{test_run_id}/testrunitems?"
                f"fields=testCaseId,testScriptResults(id),testRunId")
         response = self._send_request_with_retries('GET', url)
 
@@ -163,7 +163,7 @@ class Integration:
         return response.json().get('testRunItems', [])
 
     def get_test_script_results(self, test_run_id, item_id):
-        url = (f"{self.base_url}/rest/tests/1.0/testrun/{test_run_id}"
+        url = (f"{self.JIRA_URL}/rest/tests/1.0/testrun/{test_run_id}"
                f"/testresults?fields=testScriptResults(id,parameterSetId)&itemId={item_id}")
         response = self._send_request_with_retries('GET', url)
 
@@ -174,7 +174,7 @@ class Integration:
         return response.json()
 
     def set_test_case_statuses(self, statuses):
-        url = f"{self.base_url}/rest/tests/1.0/testresult"
+        url = f"{self.JIRA_URL}/rest/tests/1.0/testresult"
         response = self._send_request_with_retries('PUT', url, json=statuses)
 
         data = dump.dump_all(response)
@@ -183,7 +183,7 @@ class Integration:
         response.raise_for_status()
 
     def set_test_script_statuses(self, script_statuses):
-        url = f"{self.base_url}/rest/tests/1.0/testscriptresult"
+        url = f"{self.JIRA_URL}/rest/tests/1.0/testscriptresult"
         response = self._send_request_with_retries('PUT', url, json=script_statuses)
 
         data = dump.dump_all(response)
