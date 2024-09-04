@@ -10,14 +10,14 @@ from requests_toolbelt.utils import dump
 # load_dotenv()
 
 # Получение значений из переменных окружения
-NOT_EXECUTED = None
-IN_PROGRESS = None
-PASS = None
-FAIL = None
-BLOCKED = None
+# NOT_EXECUTED = None
+# IN_PROGRESS = None
+# PASS = None
+# FAIL = None
+# BLOCKED = None
 
 JIRA_TOKEN = None
-JIRA_PROJECT_NAME = None
+# JIRA_PROJECT_NAME = None
 JIRA_PROJECT_ID = None
 JIRA_URL = None
 
@@ -28,41 +28,30 @@ class Integration:
         self.max_retries = 5  # Максимальное количество повторных попыток
         self.retry_delay = 1  # Начальная задержка перед повторной попыткой (в секундах)
 
-        self.NOT_EXECUTED = None
-        self.IN_PROGRESS = None
-        self.PASS = None
-        self.FAIL = None
-        self.BLOCKED = None
+        # self.NOT_EXECUTED = None
+        # self.IN_PROGRESS = None
+        # self.PASS = None
+        # self.FAIL = None
+        # self.BLOCKED = None
 
         self.JIRA_TOKEN = None
-        self.JIRA_PROJECT_NAME = None
+        # self.JIRA_PROJECT_NAME = None
         self.JIRA_PROJECT_ID = None
         self.JIRA_URL = None
-
-        # self.api_token = api_token
-        # self.base_url = base_url
-        # self.project_id = project_id
-        # self.project_name = project_name
-
-        # self.session = requests.Session()
-        # self.session.headers.update({
-        #     'Authorization': f'Bearer {JIRA_TOKEN}',
-        #     'Content-Type': 'application/json'
-        # })
 
     def load_environment_variables(self):
         # Загрузка переменных из .env файла
         load_dotenv()
 
         # Получение значений из переменных окружения
-        self.NOT_EXECUTED = int(os.getenv("NOT_EXECUTED"))
-        self.IN_PROGRESS = int(os.getenv("IN_PROGRESS"))
-        self.PASS = int(os.getenv("PASS"))
-        self.FAIL = int(os.getenv("FAIL"))
-        self.BLOCKED = int(os.getenv("BLOCKED"))
+        # self.NOT_EXECUTED = int(os.getenv("NOT_EXECUTED"))
+        # self.IN_PROGRESS = int(os.getenv("IN_PROGRESS"))
+        # self.PASS = int(os.getenv("PASS"))
+        # self.FAIL = int(os.getenv("FAIL"))
+        # self.BLOCKED = int(os.getenv("BLOCKED"))
 
         self.JIRA_TOKEN = os.getenv("JIRA_TOKEN")
-        self.JIRA_PROJECT_NAME = os.getenv("JIRA_PROJECT_NAME")
+        # self.JIRA_PROJECT_NAME = os.getenv("JIRA_PROJECT_NAME")
         self.JIRA_PROJECT_ID = int(os.getenv("JIRA_PROJECT_ID"))
         self.JIRA_URL = os.getenv("JIRA_URL")
 
@@ -70,21 +59,22 @@ class Integration:
         missing_env_vars = []
         if not self.JIRA_TOKEN:
             missing_env_vars.append("JIRA_TOKEN")
-        if not self.JIRA_PROJECT_NAME:
-            missing_env_vars.append("JIRA_PROJECT_NAME")
+        # if not self.JIRA_PROJECT_NAME:
+        #     missing_env_vars.append("JIRA_PROJECT_NAME")
         if not self.JIRA_PROJECT_ID:
             missing_env_vars.append("JIRA_PROJECT_ID")
         if not self.JIRA_URL:
             missing_env_vars.append("JIRA_URL")
-        if not self.PASS:
-            missing_env_vars.append("PASS")
-        if not self.FAIL:
-            missing_env_vars.append("FAIL")
+        # if not self.PASS:
+        #     missing_env_vars.append("PASS")
+        # if not self.FAIL:
+        #     missing_env_vars.append("FAIL")
 
         if missing_env_vars:
             raise EnvironmentError(f"Missing required environment variables: {', '.join(missing_env_vars)}")
         else:
-            print(f'Переменные загружены: {self.JIRA_TOKEN} \t {self.JIRA_PROJECT_ID} \t {self.JIRA_URL} \t {self.JIRA_PROJECT_ID}')
+            print(
+                f'Переменные загружены: {self.JIRA_TOKEN} \t {self.JIRA_PROJECT_ID} \t {self.JIRA_URL} \t {self.JIRA_PROJECT_ID}')
 
         # Устанавливаем заголовки после загрузки переменных
         self.session.headers.update({
@@ -108,6 +98,16 @@ class Integration:
         raise HTTPError(f"Не удалось выполнить запрос после {self.max_retries} "
                         f"попыток из-за ограничений скорости отправки запросов.")
 
+    def get_project_key_by_project_id(self, project_id):
+        url = f"{self.JIRA_URL}/rest/tests/1.0/project/{project_id}"
+        response = self.session.get(url)
+
+        data = dump.dump_all(response)
+        print(data.decode('utf-8'))
+
+        response.raise_for_status()
+        return response.json().get('id')
+
     def create_test_cycle(self, cycle_name):
         url = f"{self.JIRA_URL}/rest/tests/1.0/testrun"
         payload = {
@@ -116,14 +116,15 @@ class Integration:
             "statusId": 3247
         }
         response = self.session.post(url, json=payload)
+
         data = dump.dump_all(response)
         print(data.decode('utf-8'))
 
         response.raise_for_status()
         return response.json().get('id')  # Возвращает ID созданного цикла тестов
 
-    def get_test_case_id(self, test_case_key):
-        url = f"{self.JIRA_URL}/rest/tests/1.0/testcase/{self.JIRA_PROJECT_NAME}-{test_case_key}?fields=id"
+    def get_test_case_id(self, project_key, test_case_key):
+        url = f"{self.JIRA_URL}/rest/tests/1.0/testcase/{project_key}-{test_case_key}?fields=id"
         response = self._send_request_with_retries('GET', url)
 
         data = dump.dump_all(response)

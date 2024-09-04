@@ -3,15 +3,15 @@ from pprint import pprint
 
 import pytest
 
-from .integration import (FAIL, JIRA_PROJECT_ID, JIRA_PROJECT_NAME, JIRA_TOKEN,
-                          JIRA_URL, PASS, Integration)
+from .integration import (JIRA_PROJECT_ID, JIRA_TOKEN,
+                          JIRA_URL, Integration)
 
 # Глобальный список для хранения ключей тестов, которые будут выполнены
 executed_test_keys = []
 full_test_results = {}  # полный список тестов (вместе с параметризацией)
 # список тестов без повторений, для установки статусов у ТК
 set_test_results = {}
-dict_test_statuses = {}  # {'PASS': 3238, 'FAIL': 3239}
+dict_test_statuses = {}  # словарь со статусами для тест-кейсов (например, {'PASS': 3238, 'FAIL': 3239})
 
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
@@ -58,7 +58,7 @@ def pytest_configure(config):
         integration = Integration()
         integration.load_environment_variables()  # Загружаем переменные только если флаг --zephyr установлен
 
-        # Получаем статусы тестов и сохраняем их в config
+        # Получаем статусы тестов и сохраняем их в глобальную переменную dict_test_statuses
         status_items = integration.get_test_statuses()
         for status_item in status_items:
             status = status_item.get('name').upper()
@@ -84,10 +84,12 @@ def pytest_sessionfinish(session, exitstatus):
     # executed_test_keys = getattr(session.config, "_executed_test_keys", [])
 
     if zephyr_enabled and integration:
+        project_key = integration.get_project_key_by_project_id(JIRA_PROJECT_ID)
+
         # Создаем тестовый цикл и добавляем тест-кейсы
         test_run_id = integration.create_test_cycle(test_run_name)
         print('Тестовый цикл создан: ' + str(test_run_id))
-        test_case_ids = [integration.get_test_case_id(key) for key in executed_test_keys]
+        test_case_ids = [integration.get_test_case_id(project_key, test_case_key) for test_case_key in executed_test_keys]
         integration.add_test_cases_to_cycle(test_run_id, test_case_ids)
 
         # Получаем список тестов в цикле с их ID
