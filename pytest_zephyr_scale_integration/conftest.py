@@ -5,6 +5,7 @@ import pytest
 
 from .integration import (JIRA_PROJECT_ID, JIRA_TOKEN,
                           JIRA_URL, Integration)
+from .utils import get_or_create_folder
 
 # Глобальный список для хранения ключей тестов, которые будут выполнены
 executed_test_keys = []
@@ -81,14 +82,27 @@ def pytest_sessionfinish(session, exitstatus):
     zephyr_enabled = getattr(session.config, "_zephyr_enabled", False)
     test_run_name = getattr(session.config, "_test_run_name", "Test Run Cycle")
     integration = getattr(session.config, "_zephyr_integration", None)
+    folder_name = integration.folder_name
     # executed_test_keys = getattr(session.config, "_executed_test_keys", [])
 
     if zephyr_enabled and integration:
         project_key = integration.get_project_key_by_project_id(JIRA_PROJECT_ID)
 
-        # Создаем тестовый цикл и добавляем тест-кейсы
-        test_run_id = integration.create_test_cycle(test_run_name)
-        print('Тестовый цикл создан: ' + str(test_run_id))
+        test_run_id = None
+        folder_id = None
+        if folder_name:
+            folders = integration.get_test_run_folders()
+            folder_id = get_or_create_folder(integration, folders, folder_name)
+
+            # Создаем тестовый цикл в укзаанной папке
+            test_run_id = integration.create_test_cycle(test_run_name, folder_id)
+            print('Тестовый цикл создан: ' + str(test_run_id))
+        else:
+            # Создаем тестовый цикл в корне
+            test_run_id = integration.create_test_cycle(test_run_name)
+            print('Тестовый цикл создан: ' + str(test_run_id))
+
+        # Добавление тест-кейсов в тестовый цикл
         test_case_ids = [integration.get_test_case_id(project_key, test_case_key) for test_case_key in executed_test_keys]
         integration.add_test_cases_to_cycle(test_run_id, test_case_ids)
 

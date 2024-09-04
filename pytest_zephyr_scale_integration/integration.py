@@ -38,6 +38,7 @@ class Integration:
         # self.JIRA_PROJECT_NAME = None
         self.JIRA_PROJECT_ID = None
         self.JIRA_URL = None
+        self.folder_name = None
 
     def load_environment_variables(self):
         # Загрузка переменных из .env файла
@@ -54,6 +55,7 @@ class Integration:
         # self.JIRA_PROJECT_NAME = os.getenv("JIRA_PROJECT_NAME")
         self.JIRA_PROJECT_ID = int(os.getenv("JIRA_PROJECT_ID"))
         self.JIRA_URL = os.getenv("JIRA_URL")
+        self.folder_name = os.getenv("FOLDER_NAME", None)
 
         # Проверяем, что все необходимые переменные окружения заданы
         missing_env_vars = []
@@ -108,20 +110,47 @@ class Integration:
         response.raise_for_status()
         return response.json().get('id')
 
-    def create_test_cycle(self, cycle_name):
+    def create_test_cycle(self, cycle_name, folder_id=None):
         url = f"{self.JIRA_URL}/rest/tests/1.0/testrun"
         payload = {
             "name": cycle_name,
             "projectId": self.JIRA_PROJECT_ID,
             "statusId": 3247
         }
+
+        if folder_id:
+            payload["folderId"] = folder_id
+
         response = self.session.post(url, json=payload)
 
         data = dump.dump_all(response)
         print(data.decode('utf-8'))
 
         response.raise_for_status()
-        return response.json().get('id')  # Возвращает ID созданного цикла тестов
+        return response.json().get('id')
+
+    def create_test_run_folder(self, folder_name):
+        url = f"{self.JIRA_URL}/rest/tests/1.0/folder/testrun"
+        payload = {
+            "name": folder_name,
+            "projectId": self.JIRA_PROJECT_ID
+        }
+        response = self._send_request_with_retries('POST', url, json=payload)
+
+        data = dump.dump_all(response)
+        print(data.decode('utf-8'))
+
+        response.raise_for_status()
+        return response.json().get('id')  # Возвращаем ID новой папки
+
+    def get_test_run_folders(self):
+        url = f"{self.JIRA_URL}/rest/tests/1.0/project/{self.JIRA_PROJECT_ID}/foldertree/testrun"
+        response = self._send_request_with_retries('GET', url)
+
+        data = dump.dump_all(response)
+        print(data.decode('utf-8'))
+
+        return response.json()
 
     def get_test_case_id(self, project_key, test_case_key):
         url = f"{self.JIRA_URL}/rest/tests/1.0/testcase/{project_key}-{test_case_key}?fields=id"
