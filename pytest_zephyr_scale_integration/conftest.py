@@ -86,7 +86,7 @@ def pytest_sessionfinish(session, exitstatus):
     # executed_test_keys = getattr(session.config, "_executed_test_keys", [])
 
     if zephyr_enabled and integration:
-        project_key = integration.get_project_key_by_project_id(JIRA_PROJECT_ID)
+        project_key = integration.get_project_key_by_project_id()
 
         test_run_id = None
         folder_id = None

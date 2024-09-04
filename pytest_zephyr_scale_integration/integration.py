@@ -100,8 +100,8 @@ class Integration:
         raise HTTPError(f"Не удалось выполнить запрос после {self.max_retries} "
                         f"попыток из-за ограничений скорости отправки запросов.")
 
-    def get_project_key_by_project_id(self, project_id):
-        url = f"{self.JIRA_URL}/rest/tests/1.0/project/{project_id}"
+    def get_project_key_by_project_id(self):
+        url = f"{self.JIRA_URL}/rest/tests/1.0/project/{self.JIRA_PROJECT_ID}"
         response = self.session.get(url)
 
         data = dump.dump_all(response)
