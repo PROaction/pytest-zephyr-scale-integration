@@ -108,7 +108,7 @@ class Integration:
         print(data.decode('utf-8'))
 
         response.raise_for_status()
-        return response.json().get('id')
+        return response.json().get('key')
 
     def create_test_cycle(self, cycle_name, folder_id=None):
         url = f"{self.JIRA_URL}/rest/tests/1.0/testrun"
