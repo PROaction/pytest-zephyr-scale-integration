@@ -1,22 +1,22 @@
-import re
 from pprint import pprint
+import re
 
 import pytest
 
-from .integration import (JIRA_PROJECT_ID, JIRA_TOKEN,
-                          JIRA_URL, Integration)
+from .integration import Integration
 from .utils import get_or_create_folder
 
-# Глобальный список для хранения ключей тестов, которые будут выполнены
-executed_test_keys = []
-full_test_results = {}  # полный список тестов (вместе с параметризацией)
-# список тестов без повторений, для установки статусов у ТК
-set_test_results = {}
+
+executed_test_keys = []  # список выполненных тестов (pytest)
+full_test_results = {}  # словарь со всеми тестами и статусами (вместе с параметризацией)
+set_test_results = {}  # словарь с тестами и статусаим без повторений (для установки устатуса для теста)
 dict_test_statuses = {}  # словарь со статусами для тест-кейсов (например, {'PASS': 3238, 'FAIL': 3239})
 
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):
+    """Получение результатов прогона автотестов
+    """
     outcome = yield
     report = outcome.get_result()
 
@@ -30,10 +30,11 @@ def pytest_runtest_makereport(item, call):
             if potential_key not in executed_test_keys:
                 executed_test_keys.append(potential_key)
 
-            # Создание словаря test_key: status_id
+            # Создание словаря со статусами test_key: status_id
             # {'T123': 3238, 'T234': 3239}
             if report.outcome == "passed":
                 full_test_results[test_nodeid] = dict_test_statuses.get('PASS')
+
                 # Если тест параметризованный, то одинаковых ключей будет несколько.
                 # Если хотя бы один из них FAIL, то FAIL.
                 if potential_key not in set_test_results:
@@ -42,12 +43,16 @@ def pytest_runtest_makereport(item, call):
                 full_test_results[test_nodeid] = dict_test_statuses.get('FAIL')
                 set_test_results[potential_key] = dict_test_statuses.get('FAIL')
 
-    print('executed_test_keys')
-    pprint(executed_test_keys)
+    print('executed_test_keys:', executed_test_keys)
+    print('full_test_results:', full_test_results)
+    print('set_test_results:', set_test_results)
+    print('dict_test_statuses:', dict_test_statuses)
 
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config):
+    """Конфигурация"""
+
     zephyr_enabled = config.getoption("--zephyr", default=False)
     test_run_name = config.getoption("--test_run_name", default="Test Run Cycle")
 
@@ -55,35 +60,34 @@ def pytest_configure(config):
     config._zephyr_enabled = zephyr_enabled
     config._test_run_name = test_run_name
 
+    # если флаг --zephyr установлен
     if zephyr_enabled:
         integration = Integration()
-        integration.load_environment_variables()  # Загружаем переменные только если флаг --zephyr установлен
+        integration.load_environment_variables()
 
-        # Получаем статусы тестов и сохраняем их в глобальную переменную dict_test_statuses
+        # Получаем статусы тестов и сохраняем их в dict_test_statuses
         status_items = integration.get_test_statuses()
         for status_item in status_items:
             status = status_item.get('name').upper()
             if status not in dict_test_statuses:
                 dict_test_statuses[status] = status_item.get('id')
-        # config._statuses = statuses
 
         # Сохраняем данные в config, чтобы использовать их в других хуках
         config._zephyr_integration = integration
         config._test_run_name = test_run_name
-        # config._executed_test_keys = []  # Это список, который будет заполняться по ходу выполнения тестов
 
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_sessionfinish(session, exitstatus):
-    # Обертка для выполнения действий до и после основного кода хука
-    outcome = yield
+    """Обертка для выполнения действий до и после основного кода хука"""
+
+    yield
 
     # Получаем сохраненные данные из config
     zephyr_enabled = getattr(session.config, "_zephyr_enabled", False)
     test_run_name = getattr(session.config, "_test_run_name", "Test Run Cycle")
     integration = getattr(session.config, "_zephyr_integration", None)
     folder_name = integration.folder_name
-    # executed_test_keys = getattr(session.config, "_executed_test_keys", [])
 
     if zephyr_enabled and integration:
         project_key = integration.get_project_key_by_project_id()
@@ -94,16 +98,12 @@ def pytest_sessionfinish(session, exitstatus):
             folders = integration.get_test_run_folders()
             folder_id = get_or_create_folder(integration, folders, folder_name)
 
-            # Создаем тестовый цикл в укзаанной папке
-            test_run_id = integration.create_test_cycle(test_run_name, folder_id)
-            print('Тестовый цикл создан: ' + str(test_run_id))
-        else:
-            # Создаем тестовый цикл в корне
-            test_run_id = integration.create_test_cycle(test_run_name)
-            print('Тестовый цикл создан: ' + str(test_run_id))
+        test_run_id = integration.create_test_cycle(test_run_name, folder_id)
+        print('Тестовый цикл создан:', test_run_id)
 
         # Добавление тест-кейсов в тестовый цикл
-        test_case_ids = [integration.get_test_case_id(project_key, test_case_key) for test_case_key in executed_test_keys]
+        test_case_ids = [integration.get_test_case_id(project_key, test_case_key) for test_case_key in
+                         executed_test_keys]
         integration.add_test_cases_to_cycle(test_run_id, test_case_ids)
 
         # Получаем список тестов в цикле с их ID
