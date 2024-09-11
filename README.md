@@ -25,7 +25,6 @@ pip install pytest_zephyr_scale_integration
 1. Создать файл `.env` и заполнить его полями
 ```commandline
 # Конфигурация JIRA
-JIRA_TOKEN='Jira_Token' # продпочтительнее использовать ТУЗ, у которого настроена электронная почта.
 JIRA_PROJECT_ID=12345 # id проекта, можно узнать вызвав `GET /rest/tests/1.0/project`
 JIRA_URL='https://your-jira-instance.atlassian.net'
 FOLDER_NAME='Regress v1.0.0'
@@ -34,6 +33,7 @@ FOLDER_NAME='Regress v1.0.0'
 3. При запуске автотестов через `pyest` нужно указать дополнительные параметры: <br>
 `--zephyr` - необязательный. Вкл процесса интеграции. После прохождения автотестов будет автоматически 
 создан тестовый цикл. <br>
+`--jira_token` - токен ТУЗ'а, у которого настроена электронная почта. Обязательное поле, если `--zephyr`.
 `--zephyr_test_run_name` - необязательный. Наименования тестового цикла, по-умолчанию - "Test Run Cycle". <br>
 Например, <br>
 ```pytest --zephyr --zephyr_test_run_name="Regress v.1.1.0"```

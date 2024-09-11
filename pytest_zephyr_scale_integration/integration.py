@@ -13,15 +13,21 @@ JIRA_URL = None
 
 
 class Integration:
-    def __init__(self):
+    def __init__(self, jira_token):
         self.session = requests.Session()
         self.max_retries = 5  # Максимальное количество повторных попыток
         self.retry_delay = 1  # Начальная задержка перед повторной попыткой (в секундах)
 
-        self.JIRA_TOKEN = None
+        self.JIRA_TOKEN = jira_token
         self.JIRA_PROJECT_ID = None
         self.JIRA_URL = None
         self.folder_name = None
+
+        # Установка заголовков для сессии
+        self.session.headers.update({
+            'Authorization': f'Bearer {self.JIRA_TOKEN}',
+            'Content-Type': 'application/json'
+        })
 
     def load_environment_variables(self):
         """Загрузка переменных окружения из .env файла"""
@@ -29,7 +35,6 @@ class Integration:
         load_dotenv()
 
         # Получение значений из переменных окружения
-        self.JIRA_TOKEN = os.getenv("JIRA_TOKEN")
         self.JIRA_PROJECT_ID = int(os.getenv("JIRA_PROJECT_ID"))
         self.JIRA_URL = os.getenv("JIRA_URL")
         self.folder_name = os.getenv("FOLDER_NAME", None)
@@ -42,12 +47,6 @@ class Integration:
             print(
                 f'Переменные загружены: {self.JIRA_TOKEN} \t {self.JIRA_PROJECT_ID} \t '
                 f'{self.JIRA_URL} \t {self.JIRA_PROJECT_ID}')
-
-        # Установка заголовков для сессии
-        self.session.headers.update({
-            'Authorization': f'Bearer {self.JIRA_TOKEN}',
-            'Content-Type': 'application/json'
-        })
 
     def _send_request_with_retries(self, method, url, **kwargs):
         """Отправка запроса с повторными попытками при статусе 429"""

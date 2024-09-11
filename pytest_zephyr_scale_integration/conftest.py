@@ -55,14 +55,19 @@ def pytest_configure(config):
 
     zephyr_enabled = config.getoption("--zephyr", default=False)
     zephyr_test_run_name = config.getoption("--zephyr_test_run_name", default="Test Run Cycle")
+    jira_token = config.getoption("--jira_token")
+
+    if zephyr_enabled and not jira_token:
+        raise ValueError("Для интеграции с Zephyr необходимо передать параметр --jira_token.")
 
     # Сохраняем значения в config для использования в pytest_sessionfinish
     config._zephyr_enabled = zephyr_enabled
     config._zephyr_test_run_name = zephyr_test_run_name
+    config._jira_token = jira_token
 
     # если флаг --zephyr установлен
     if zephyr_enabled:
-        integration = Integration()
+        integration = Integration(jira_token)
         integration.load_environment_variables()
 
         # Получаем статусы тестов и сохраняем их в dict_test_statuses
@@ -164,4 +169,6 @@ def pytest_sessionfinish(session, exitstatus):
 def pytest_addoption(parser):
     """Кастомные параметры запуска автотестов."""
     parser.addoption("--zephyr", action="store_true", help="Enable Zephyr integration")
-    parser.addoption("--zephyr_test_run_name", action="store", default="Test Run Cycle", help="Name of the test run cycle")
+    parser.addoption("--zephyr_test_run_name", action="store", default="Test Run Cycle",
+                     help="Name of the test run cycle")
+    parser.addoption("--jira_token", action="store", help="JIRA API token for authentication")
