@@ -54,11 +54,11 @@ def pytest_configure(config):
     """Конфигурация"""
 
     zephyr_enabled = config.getoption("--zephyr", default=False)
-    test_run_name = config.getoption("--zephyr_test_run_name", default="Test Run Cycle")
+    zephyr_test_run_name = config.getoption("--zephyr_test_run_name", default="Test Run Cycle")
 
     # Сохраняем значения в config для использования в pytest_sessionfinish
     config._zephyr_enabled = zephyr_enabled
-    config._zephyr_test_run_name = test_run_name
+    config._zephyr_test_run_name = zephyr_test_run_name
 
     # если флаг --zephyr установлен
     if zephyr_enabled:
