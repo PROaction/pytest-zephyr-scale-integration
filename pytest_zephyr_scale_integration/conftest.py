@@ -54,11 +54,11 @@ def pytest_configure(config):
     """Конфигурация"""
 
     zephyr_enabled = config.getoption("--zephyr", default=False)
-    test_run_name = config.getoption("--test_run_name", default="Test Run Cycle")
+    zephyr_test_run_name = config.getoption("--zephyr_test_run_name", default="Test Run Cycle")
 
     # Сохраняем значения в config для использования в pytest_sessionfinish
     config._zephyr_enabled = zephyr_enabled
-    config._test_run_name = test_run_name
+    config._zephyr_test_run_name = zephyr_test_run_name
 
     # если флаг --zephyr установлен
     if zephyr_enabled:
@@ -74,7 +74,7 @@ def pytest_configure(config):
 
         # Сохраняем данные в config, чтобы использовать их в других хуках
         config._zephyr_integration = integration
-        config._test_run_name = test_run_name
+        config._zephyr_test_run_name = zephyr_test_run_name
 
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
@@ -85,7 +85,7 @@ def pytest_sessionfinish(session, exitstatus):
 
     # Получаем сохраненные данные из config
     zephyr_enabled = getattr(session.config, "_zephyr_enabled", False)
-    test_run_name = getattr(session.config, "_test_run_name", "Test Run Cycle")
+    zephyr_test_run_name = getattr(session.config, "_zephyr_test_run_name", "Test Run Cycle")
     integration = getattr(session.config, "_zephyr_integration", None)
     folder_name = integration.folder_name
 
@@ -98,7 +98,7 @@ def pytest_sessionfinish(session, exitstatus):
             folders = integration.get_test_run_folders()
             folder_id = get_or_create_folder(integration, folders, folder_name)
 
-        test_run_id = integration.create_test_cycle(test_run_name, folder_id)
+        test_run_id = integration.create_test_cycle(zephyr_test_run_name, folder_id)
         print('Тестовый цикл создан:', test_run_id)
 
         # Добавление тест-кейсов в тестовый цикл
@@ -164,4 +164,4 @@ def pytest_sessionfinish(session, exitstatus):
 def pytest_addoption(parser):
     """Кастомные параметры запуска автотестов."""
     parser.addoption("--zephyr", action="store_true", help="Enable Zephyr integration")
-    parser.addoption("--test_run_name", action="store", default="Test Run Cycle", help="Name of the test run cycle")
+    parser.addoption("--zephyr_test_run_name", action="store", default="Test Run Cycle", help="Name of the test run cycle")
