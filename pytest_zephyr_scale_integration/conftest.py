@@ -92,10 +92,10 @@ def pytest_sessionfinish(session, exitstatus):
     zephyr_enabled = getattr(session.config, "_zephyr_enabled", False)
     zephyr_test_run_name = getattr(session.config, "_zephyr_test_run_name", "Test Run Cycle")
     integration = getattr(session.config, "_zephyr_integration", None)
-    folder_name = integration.folder_name
 
     if zephyr_enabled and integration:
         project_key = integration.get_project_key_by_project_id()
+        folder_name = integration.folder_name
 
         test_run_id = None
         folder_id = None
