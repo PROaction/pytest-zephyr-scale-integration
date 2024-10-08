@@ -80,12 +80,17 @@ class Integration:
 
     def create_test_cycle(self, cycle_name, folder_id=None):
         """Создание тестового цикла"""
+        test_cycle_statuses = self.get_test_cycle_statuses()
+        test_cycle_status_id = None
+        for test_cycle_status in test_cycle_statuses:
+            if test_cycle_status.get('name').lower() == 'not executed':
+                test_cycle_status_id = test_cycle_status.get('id')
 
         url = f"{self.JIRA_URL}/rest/tests/1.0/testrun"
         payload = {
             "name": cycle_name,
             "projectId": self.JIRA_PROJECT_ID,
-            "statusId": 3247
+            "statusId": test_cycle_status_id if not test_cycle_status_id else test_cycle_statuses[0].get('id')
         }
 
         if folder_id:
@@ -205,6 +210,18 @@ class Integration:
 
         response.raise_for_status()
         return response.json()
+
+    def get_test_cycle_statuses(self):
+        """Получение статусов для тестового цикла"""
+        url = f'{self.JIRA_URL}/rest/tests/1.0/project/{self.JIRA_PROJECT_ID}/testrunstatus'
+        response = self._send_request_with_retries('GET', url)
+
+        data = dump.dump_all(response)
+        print(data.decode('utf-8'))
+
+        response.raise_for_status()
+        return response.json()
+
 
     def set_test_case_statuses(self, statuses):
         """Установка статусов для тест-кейсов"""
