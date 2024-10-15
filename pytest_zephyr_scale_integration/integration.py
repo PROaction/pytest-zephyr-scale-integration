@@ -110,7 +110,8 @@ class Integration:
         url = f"{self.JIRA_URL}/rest/tests/1.0/folder/testrun"
         payload = {
             "name": folder_name,
-            "projectId": self.JIRA_PROJECT_ID
+            "projectId": self.JIRA_PROJECT_ID,
+            "index": 0
         }
         response = self._send_request_with_retries('POST', url, json=payload)
 
