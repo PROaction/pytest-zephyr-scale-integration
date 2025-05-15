@@ -1,5 +1,7 @@
 import os
 import time
+from datetime import datetime, timezone
+from typing import Optional
 
 from dotenv import load_dotenv
 import requests
@@ -86,11 +88,16 @@ class Integration:
             if test_cycle_status.get('name').lower() == 'not executed':
                 test_cycle_status_id = test_cycle_status.get('id')
 
+        now_utc = datetime.now(timezone.utc)
+        formatted_time = now_utc.isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+
         url = f"{self.JIRA_URL}/rest/tests/1.0/testrun"
         payload = {
             "name": cycle_name,
             "projectId": self.JIRA_PROJECT_ID,
-            "statusId": test_cycle_status_id if not test_cycle_status_id else test_cycle_statuses[0].get('id')
+            "statusId": test_cycle_status_id if not test_cycle_status_id else test_cycle_statuses[0].get('id'),
+            "plannedStartDate": formatted_time,
+            "plannedEndDate": formatted_time
         }
 
         if folder_id:
@@ -102,7 +109,13 @@ class Integration:
         print(data.decode('utf-8'))
 
         response.raise_for_status()
-        return response.json().get('id')
+        test_run_id = response.json().get('id')  # ID созданного тестового цикла
+
+        # Сохраняем в файл, чтобы потом получить в pipeline'е
+        with open(".test_run_id", "w") as f:
+            f.write(str(test_run_id))
+
+        return test_run_id
 
     def create_test_run_folder(self, folder_name):
         """Создание новой папки для тестового цикла"""
@@ -155,14 +168,21 @@ class Integration:
         response.raise_for_status()
         return response.json().get('id')
 
-    def add_test_cases_to_cycle(self, test_run_id, test_case_ids):
+    def add_test_cases_to_cycle(self, test_run_id, test_case_ids, user_key=None):
         """Добавление тест-кейсов в тестовый цикл"""
 
         url = f"{self.JIRA_URL}/rest/tests/1.0/testrunitem/bulk/save"
-        added_test_run_items = [
-            {"index": i, "lastTestResult": {"testCaseId": test_case_id}}
-            for i, test_case_id in enumerate(test_case_ids)
-        ]
+
+        if user_key:
+            added_test_run_items = [
+                {"index": i, "lastTestResult": {"testCaseId": test_case_id}, "assignedTo": user_key}
+                for i, test_case_id in enumerate(test_case_ids)
+            ]
+        else:
+            added_test_run_items = [
+                {"index": i, "lastTestResult": {"testCaseId": test_case_id}}
+                for i, test_case_id in enumerate(test_case_ids)
+            ]
         payload = {
             "testRunId": test_run_id,
             "addedTestRunItems": added_test_run_items
@@ -245,3 +265,13 @@ class Integration:
         print(data.decode('utf-8'))
 
         response.raise_for_status()
+
+    def get_user_key_by_email(self, email: str) -> Optional[str]:
+        """Получение Jira userKey по email"""
+        url = f"{self.JIRA_URL}/rest/api/2/user/search?username={email}"
+        response = self._send_request_with_retries('GET', url)
+        response.raise_for_status()
+        users = response.json()
+        if users and isinstance(users, list):
+            return users[0].get("key")  # например, JIRAUSERXXXXXX
+        return None

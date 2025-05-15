@@ -64,6 +64,7 @@ def pytest_configure(config):
     config._zephyr_enabled = zephyr_enabled
     config._zephyr_test_run_name = zephyr_test_run_name
     config._jira_token = jira_token
+    config._executed_by_email = config.getoption("--executed_by_email")
 
     # если флаг --zephyr установлен
     if zephyr_enabled:
@@ -92,6 +93,7 @@ def pytest_sessionfinish(session, exitstatus):
     zephyr_enabled = getattr(session.config, "_zephyr_enabled", False)
     zephyr_test_run_name = getattr(session.config, "_zephyr_test_run_name", "Test Run Cycle")
     integration = getattr(session.config, "_zephyr_integration", None)
+    user_email = getattr(session.config, "_executed_by_email", None)
 
     if zephyr_enabled and integration:
         project_key = integration.get_project_key_by_project_id()
@@ -109,7 +111,9 @@ def pytest_sessionfinish(session, exitstatus):
         # Добавление тест-кейсов в тестовый цикл
         test_case_ids = [integration.get_test_case_id(project_key, test_case_key) for test_case_key in
                          executed_test_keys]
-        integration.add_test_cases_to_cycle(test_run_id, test_case_ids)
+
+        user_key = integration.get_user_key_by_email(user_email)  # получаем userKey, чтобы заполнить Executed by
+        integration.add_test_cases_to_cycle(test_run_id, test_case_ids, user_key)
 
         # Получаем список тестов в цикле с их ID
         test_run_items = integration.get_test_run_items(test_run_id)
@@ -172,3 +176,4 @@ def pytest_addoption(parser):
     parser.addoption("--zephyr_test_run_name", action="store", default="Test Run Cycle",
                      help="Name of the test run cycle")
     parser.addoption("--jira_token", action="store", help="JIRA API token for authentication")
+    parser.addoption("--executed_by_email", action="store", default=None, help="User email")
