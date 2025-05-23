@@ -8,6 +8,7 @@ import requests
 from requests import HTTPError
 from requests_toolbelt.utils import dump
 
+from .zephyr_logger import setup_logger
 
 JIRA_TOKEN = None
 JIRA_PROJECT_ID = None
@@ -15,17 +16,27 @@ JIRA_URL = None
 
 
 class Integration:
-    def __init__(self, jira_token):
+    def __init__(self, jira_token, cache=None):
+        self.logger = setup_logger()
+        self.logger.info('Initializing Zephyr Integration')
+        self.start_time = time.time()
+
         self.session = requests.Session()
-        self.max_retries = 5  # Максимальное количество повторных попыток
-        self.retry_delay = 1  # Начальная задержка перед повторной попыткой (в секундах)
+        self.max_retries = 5
+        self.retry_delay = 1
+        # Track number of requests per endpoint
+        self.request_counts = {}  # endpoint -> count
+
+        # Added: in-memory cache for test case IDs
+        self._tcid_cache = {}
+        # Added: pytest cache plugin instance passed in constructor
+        self._cache = cache
 
         self.JIRA_TOKEN = jira_token
         self.JIRA_PROJECT_ID = None
         self.JIRA_URL = None
         self.folder_name = None
 
-        # Установка заголовков для сессии
         self.session.headers.update({
             'Authorization': f'Bearer {self.JIRA_TOKEN}',
             'Content-Type': 'application/json'
@@ -51,33 +62,44 @@ class Integration:
                 f'{self.JIRA_URL} \t {self.JIRA_PROJECT_ID}')
 
     def _send_request_with_retries(self, method, url, **kwargs):
-        """Отправка запроса с повторными попытками при статусе 429"""
-
+        endpoint = url.split('?')[0]
+        self.request_counts.setdefault(endpoint, 0)
         retries = 0
         while retries < self.max_retries:
+            self.request_counts[endpoint] += 1
             response = self.session.request(method, url, **kwargs)
             if response.status_code == 429:
-                retries += 1
-                wait_time = self.retry_delay * (2 ** (retries - 1))  # Экспоненциальная задержка
-                print(f"Превышен лимит количества отправленный сообщений. "
-                      f"Ожидаю {wait_time} секунд до повторной отправки...")
+                wait_time = self.retry_delay * (2 ** retries)
+                self.logger.warning(f'Rate limit hit on {endpoint}, retry in {wait_time}s')
                 time.sleep(wait_time)
+                retries += 1
             else:
-                response.raise_for_status()
+                try:
+                    response.raise_for_status()
+                except HTTPError as e:
+                    # Log request and response details on error
+                    req = response.request
+                    self.logger.error(
+                        f"Request to {req.method} {req.url} failed.\nHeaders: {req.headers}\nBody: {req.body}"
+                    )
+                    self.logger.error(
+                        f"Response status: {response.status_code}\nResponse body: {response.text}"
+                    )
+                    raise
                 return response
-        raise HTTPError(f"Не удалось выполнить запрос после {self.max_retries} "
-                        f"попыток из-за ограничений скорости отправки запросов.")
+        msg = f'Failed after {self.max_retries} retries: {endpoint}'
+        self.logger.error(msg)
+        raise HTTPError(msg)
 
     def get_project_key_by_project_id(self):
         """Получение ключа проекта по его ID"""
 
         url = f"{self.JIRA_URL}/rest/tests/1.0/project/{self.JIRA_PROJECT_ID}"
-        response = self.session.get(url)
+        response = self._send_request_with_retries('GET', url)
 
-        data = dump.dump_all(response)
-        print(data.decode('utf-8'))
-
+        self.logger.info(f'GET /rest/tests/1.0/project/{self.JIRA_PROJECT_ID}, status {response.status_code}')
         response.raise_for_status()
+
         return response.json().get('key')
 
     def create_test_cycle(self, cycle_name, folder_id=None):
@@ -103,15 +125,14 @@ class Integration:
         if folder_id:
             payload["folderId"] = folder_id
 
-        response = self.session.post(url, json=payload)
+        response = self._send_request_with_retries('POST', url, json=payload)
 
-        data = dump.dump_all(response)
-        print(data.decode('utf-8'))
-
+        self.logger.info(f'POST /rest/tests/1.0/testrun, status {response.status_code}')
         response.raise_for_status()
+
         test_run_id = response.json().get('id')  # ID созданного тестового цикла
 
-        # Сохраняем в файл, чтобы потом получить в pipeline'е
+        # Сохраняем в файл id тестового цикла, чтобы потом получить в pipeline'е
         with open(".test_run_id", "w") as f:
             f.write(str(test_run_id))
 
@@ -128,8 +149,7 @@ class Integration:
         }
         response = self._send_request_with_retries('POST', url, json=payload)
 
-        data = dump.dump_all(response)
-        print(data.decode('utf-8'))
+        self.logger.info(f'POST /rest/tests/1.0/folder/testrun, status {response.status_code}')
 
         response.raise_for_status()
         return response.json().get('id')  # Возвращаем ID новой папки
@@ -140,30 +160,52 @@ class Integration:
         url = f"{self.JIRA_URL}/rest/tests/1.0/project/{self.JIRA_PROJECT_ID}/foldertree/testrun"
         response = self._send_request_with_retries('GET', url)
 
-        data = dump.dump_all(response)
-        print(data.decode('utf-8'))
+        self.logger.info(f'GET /rest/tests/1.0/project/{self.JIRA_PROJECT_ID}/foldertree/testrun, '
+                         f'status {response.status_code}')
+
+        response.raise_for_status()
 
         return response.json()
 
     def get_test_case_id(self, project_key, test_case_key):
         """Получение ID тест-кейса по ключу проекта и ключу тест-кейса"""
 
+        # Added: unique key for pytest cache storage
+        cache_key = f"zephyr.testcase.{project_key}-{test_case_key}"
+
+        # Step 1: check pytest cache
+        if self._cache:
+            cached = self._cache.get(cache_key, None)
+            if cached:
+                return cached
+
+        # Step 2: check in-memory cache
+        key = f"{project_key}-{test_case_key}"
+        if key in self._tcid_cache:
+            return self._tcid_cache[key]
+
+        # If not cached, perform API request
         url = f"{self.JIRA_URL}/rest/tests/1.0/testcase/{project_key}-{test_case_key}?fields=id"
         response = self._send_request_with_retries('GET', url)
+        tcid = response.json().get('id')
 
-        data = dump.dump_all(response)
-        print(data.decode('utf-8'))
+        # Added: store in both caches
+        self._tcid_cache[key] = tcid
+        if self._cache:
+            self._cache.set(cache_key, tcid)
+
+        self.logger.info(f'GET /rest/tests/1.0/testcase/{project_key}-{test_case_key}?fields=id, '
+                         f'status {response.status_code}')
 
         response.raise_for_status()
-        return response.json().get('id')
+        return tcid
 
     def get_test_run_id(self, test_cycle_key):
         """Получение ID тестового цикла"""
         url = f"{self.JIRA_URL}/rest/tests/1.0/testrun/{test_cycle_key}?fields=id"
         response = self._send_request_with_retries('GET', url)
 
-        data = dump.dump_all(response)
-        print(data.decode('utf-8'))
+        self.logger.info(f'GET /rest/tests/1.0/testrun/{test_cycle_key}?fields=id, status {response.status_code}')
 
         response.raise_for_status()
         return response.json().get('id')
@@ -189,8 +231,7 @@ class Integration:
         }
         response = self._send_request_with_retries('PUT', url, json=payload)
 
-        data = dump.dump_all(response)
-        print(data.decode('utf-8'))
+        self.logger.info(f'PUT /rest/tests/1.0/testrunitem/bulk/save, status {response.status_code}')
 
         response.raise_for_status()
 
@@ -201,8 +242,9 @@ class Integration:
                f"fields=testCaseId,testScriptResults(id),testRunId")
         response = self._send_request_with_retries('GET', url)
 
-        data = dump.dump_all(response)
-        print(data.decode('utf-8'))
+        self.logger.info(f'GET /rest/tests/1.0/testrun/{test_run_id}/testrunitems'
+                         f'?fields=testCaseId,testScriptResults(id),testRunId, '
+                         f'status {response.status_code}')
 
         response.raise_for_status()
         return response.json().get('testRunItems', [])
@@ -214,8 +256,9 @@ class Integration:
                f"/testresults?fields=testScriptResults(id,parameterSetId)&itemId={item_id}")
         response = self._send_request_with_retries('GET', url)
 
-        data = dump.dump_all(response)
-        print(data.decode('utf-8'))
+        self.logger.info(f'GET /rest/tests/1.0/testrun/{test_run_id}/testresults'
+                         f'?fields=testScriptResults(id,parameterSetId)&itemId={item_id}, '
+                         f'status {response.status_code}')
 
         response.raise_for_status()
         return response.json()
@@ -226,8 +269,8 @@ class Integration:
         url = f'{self.JIRA_URL}/rest/tests/1.0/project/{self.JIRA_PROJECT_ID}/testresultstatus'
         response = self._send_request_with_retries('GET', url)
 
-        data = dump.dump_all(response)
-        print(data.decode('utf-8'))
+        self.logger.info(f'GET /rest/tests/1.0/project/{self.JIRA_PROJECT_ID}/testresultstatus, '
+                         f'status {response.status_code}')
 
         response.raise_for_status()
         return response.json()
@@ -237,12 +280,11 @@ class Integration:
         url = f'{self.JIRA_URL}/rest/tests/1.0/project/{self.JIRA_PROJECT_ID}/testrunstatus'
         response = self._send_request_with_retries('GET', url)
 
-        data = dump.dump_all(response)
-        print(data.decode('utf-8'))
+        self.logger.info(f'GET /rest/tests/1.0/project/{self.JIRA_PROJECT_ID}/testrunstatus, '
+                         f'status {response.status_code}')
 
         response.raise_for_status()
         return response.json()
-
 
     def set_test_case_statuses(self, statuses):
         """Установка статусов для тест-кейсов"""
@@ -250,8 +292,7 @@ class Integration:
         url = f"{self.JIRA_URL}/rest/tests/1.0/testresult"
         response = self._send_request_with_retries('PUT', url, json=statuses)
 
-        data = dump.dump_all(response)
-        print(data.decode('utf-8'))
+        self.logger.info(f'PUT /rest/tests/1.0/testresult, status {response.status_code}')
 
         response.raise_for_status()
 
@@ -261,8 +302,7 @@ class Integration:
         url = f"{self.JIRA_URL}/rest/tests/1.0/testscriptresult"
         response = self._send_request_with_retries('PUT', url, json=script_statuses)
 
-        data = dump.dump_all(response)
-        print(data.decode('utf-8'))
+        self.logger.info(f'PUT /rest/tests/1.0/testscriptresult, status {response.status_code}')
 
         response.raise_for_status()
 
@@ -270,6 +310,9 @@ class Integration:
         """Получение Jira userKey по email"""
         url = f"{self.JIRA_URL}/rest/api/2/user/search?username={email}"
         response = self._send_request_with_retries('GET', url)
+
+        self.logger.info(f'PUT /rest/api/2/user/search?username={email}, status {response.status_code}')
+
         response.raise_for_status()
         users = response.json()
         if users and isinstance(users, list):
