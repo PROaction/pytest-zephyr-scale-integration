@@ -132,9 +132,12 @@ class Integration:
 
         test_run_id = response.json().get('id')  # ID созданного тестового цикла
 
-        # Сохраняем в файл id тестового цикла, чтобы потом получить в pipeline'е
-        with open(".test_run_id", "w") as f:
-            f.write(str(test_run_id))
+        # Сохраняем test_run_id в кэш pytest (.pytest_cache/v/zephyr/test_run_id)
+        if self._cache:
+            self._cache.set("zephyr/test_run_id", test_run_id)
+            self.logger.info(f"Saved test_run_id={test_run_id} to pytest cache")
+        else:
+            self.logger.warning("Pytest cache is not available; test_run_id not cached")
 
         return test_run_id
 
@@ -217,7 +220,7 @@ class Integration:
 
         if user_key:
             added_test_run_items = [
-                {"index": i, "lastTestResult": {"testCaseId": test_case_id}, "assignedTo": user_key}
+                {"index": i, "lastTestResult": {"testCaseId": test_case_id, "assignedTo": user_key}}
                 for i, test_case_id in enumerate(test_case_ids)
             ]
         else:
@@ -286,7 +289,7 @@ class Integration:
         response.raise_for_status()
         return response.json()
 
-    def set_test_case_statuses(self, statuses):
+    def set_test_case_statuses(self, statuses, user_key=None):
         """Установка статусов для тест-кейсов"""
 
         url = f"{self.JIRA_URL}/rest/tests/1.0/testresult"
